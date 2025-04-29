@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import SearchBar from '../components/SearchBar';
-
+import ResultsTable from '../components/ResultsTable';
 const Home = () => {
   const [showResults, setShowResults] = useState(false);
 
@@ -22,6 +22,8 @@ const Home = () => {
       <div className="w-full max-w-md">
         <SearchBar onSearch={() => setShowResults(true)} />
       </div>
+    
+      
     </div>
   );
 };

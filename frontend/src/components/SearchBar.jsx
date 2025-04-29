@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Search, Play } from 'lucide-react';
 import { ClipLoader } from 'react-spinners';
-
+import ResultsTable from './ResultsTable';
+import Loader from './Loader';
 const DEFAULT_RESULTS = [
   'Result One',
   'Result Two',
@@ -10,7 +11,6 @@ const DEFAULT_RESULTS = [
   'Result Five',
 ];
 
-// Suggestions for autocomplete
 const SUGGESTIONS = [
   'Tell me more about the theory of evolution',
   'What is the theory of relativity',
@@ -37,11 +37,7 @@ const SearchBar = ({ onSearch }) => {
   const handleInputChange = (e) => {
     const value = e.target.value;
     setQuery(value);
-    if (value.length > 0) {
-      setShowSuggestions(true);
-    } else {
-      setShowSuggestions(false);
-    }
+    setShowSuggestions(value.length > 0);
   };
 
   const handleSuggestionClick = (suggestion) => {
@@ -50,10 +46,10 @@ const SearchBar = ({ onSearch }) => {
   };
 
   return (
-    <div className="relative w-full overflow-visible flex flex-col items-center">
+    <div className="relative w-full flex flex-col items-center px-4 sm:px-0">
       <div
-        className={`relative transition-all duration-500 ease-out
-          ${showLocalResults ? 'transform -translate-y-56 w-[calc(100%+4rem)]' : 'w-full'}`}
+        className={`relative transition-all duration-500 ease-out w-full max-w-[90vw] sm:max-w-xl
+          ${showLocalResults ? 'transform -translate-y-56 sm:-translate-y-56' : ''}`}
       >
         <input
           type="text"
@@ -65,12 +61,10 @@ const SearchBar = ({ onSearch }) => {
                      focus:outline-none focus:ring-0 focus:border-transparent"
         />
 
-        {/* Left search icon */}
         <div className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400">
           <Search size={20} />
         </div>
 
-        {/* Right “Go” button */}
         <button
           onClick={handleGo}
           className="absolute right-2 top-1/2 transform -translate-y-1/2
@@ -81,9 +75,8 @@ const SearchBar = ({ onSearch }) => {
           <Play size={14} />
         </button>
 
-        {/* Autocomplete Suggestions */}
         {showSuggestions && (
-          <div className="absolute w-full mt-2 bg-white rounded-lg shadow-lg z-20">
+          <div className="absolute w-full mt-2 bg-white rounded-lg shadow-lg z-[100] max-h-60 overflow-y-auto">
             {SUGGESTIONS.filter(s =>
               s.toLowerCase().includes(query.toLowerCase())
             ).map((suggestion, idx) => (
@@ -98,21 +91,16 @@ const SearchBar = ({ onSearch }) => {
           </div>
         )}
       </div>
-
-      {/* RESULTS PANEL */}
+{/* 
       {showLocalResults && (
-        <div className="absolute top-[calc(100%-11rem)] mt-2 -left-50 w-[calc(100%+10rem)] bg-white rounded-lg shadow-lg p-4 z-10
-                        flex flex-col items-center justify-start
-                        max-h-[500px] overflow-y-auto">
-          {/* Show loader if loading */}
+        <div className="absolute top-[calc(100%-11rem)] sm:top-[calc(100%-11rem)] mt-2 w-[90vw] sm:w-[calc(100%+10rem)] bg-white rounded-lg shadow-lg p-4 z-10
+                        flex flex-col items-center justify-start max-h-[500px] overflow-y-auto">
           {isLoading ? (
             <div className="flex justify-center items-center h-24">
               <ClipLoader
                 color="#8b5cf6"
                 size={50}
-                cssOverride={{
-                  borderWidth: '5px',
-                }}
+                cssOverride={{ borderWidth: '5px' }}
               />
             </div>
           ) : (
@@ -125,7 +113,25 @@ const SearchBar = ({ onSearch }) => {
             </ul>
           )}
         </div>
-      )}
+      )} */}
+      {showLocalResults && (
+        <div className="absolute top-[calc(100%-11rem)] sm:top-[calc(100%-11rem)] mt-2 w-[100vw] sm:w-[calc(100%+10rem)] bg-white rounded-lg shadow-lg p-4 
+         flex flex-col items-center justify-start max-h-[500px] overflow-y-auto">
+        {isLoading ? (
+          <div className="flex justify-center items-center h-24">
+            <ClipLoader
+              color="#8b5cf6"
+              size={50}
+              cssOverride={{ borderWidth: '5px' }}
+            />
+          
+          </div>
+        ) : (
+         <ResultsTable/>
+        )}
+      </div>
+    )}
+
     </div>
   );
 };
