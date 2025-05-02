@@ -53,11 +53,12 @@ Docker version XX.XX.X, build xxxxxxx
 
 ### ✅ STEP 2: Create `.env` File
 
-Create a `.env` file at the project root with the following content:
+Create a `.env` file at the project root with the following content. (.env.sample) template also present for your ease of use:
 
 ```env
 DATABASE_URL=postgresql://postgres:postgres@postgres:5432/unified_db
 REDIS_URL=redis://redis:6379/0
+REACT_APP_API_URL=http://localhost:8000
 OPENAI_API_KEY=sk-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 ```
 
