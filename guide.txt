@@ -1,0 +1,14 @@
+1. Create Root dockey-compose.yml
+    a. postgres => ankane/pgvector on port 5432
+    b. redis => redis:alpine on port 6379
+    c. backend => FastAPI on port 8000
+    d. frontend => React on port 3000
+
+2. Wire env
+    a. Database URL
+    b. REDIS URL
+    c. OPEN API KEY
+
+3.Point Postgres service at a database/db-init.sql file so it runs on container start.
+(idek what this means)
+
