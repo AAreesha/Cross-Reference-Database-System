@@ -1,0 +1,50 @@
+
+services:
+  postgres:
+    image: ankane/pgvector
+    container_name: pgvector_db
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: unified_db
+      POSTGRES_USER: postgre
+      POSTGRES_PASSWORD: areesha
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./database/db-init.sql:/docker-entrypoint-initdb.d/db-init.sql
+
+  redis:
+    image: redis:alpine
+    container_name: redis_cache
+    ports:
+      - "6379:6379"
+
+  backend:
+    build:
+      context: ./backend
+    container_name: backend_api
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/unified_db
+      REDIS_URL: redis://redis:6379
+      OPENAI_API_KEY: sk-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+
+  adminer:
+    image: adminer
+    container_name: db_adminer
+    restart: always
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+
+volumes:
+  pgdata:
+
+
+
+
