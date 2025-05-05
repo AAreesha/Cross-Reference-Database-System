@@ -1,3 +1,4 @@
+// Updated ResultsTable.jsx (Dynamic version with props)
 import PropTypes from 'prop-types';
 
 // Table components
@@ -22,19 +23,18 @@ export function TableBody({ children }) {
 }
 
 export function TableRow({ children, isHeader = false, className = "" }) {
-    return (
-      <tr
-        className={`${
-          isHeader
-            ? "bg-purple-100 text-purple-900 text-sm"
-            : "even:bg-purple-50 odd:bg-white"
-        } border-b ${className}`}
-      >
-        {children}
-      </tr>
-    );
-  }
-  
+  return (
+    <tr
+      className={`${
+        isHeader
+          ? "bg-purple-100 text-purple-900 text-sm"
+          : "even:bg-purple-50 odd:bg-white"
+      } border-b ${className}`}
+    >
+      {children}
+    </tr>
+  );
+}
 
 export function TableCell({ children }) {
   return (
@@ -45,7 +45,7 @@ export function TableCell({ children }) {
 }
 
 // Prop types
-ResultsTable.propTypes = {
+Table.propTypes = {
   children: PropTypes.node.isRequired,
   className: PropTypes.string,
 };
@@ -68,53 +68,14 @@ TableBody.propTypes = {
   children: PropTypes.node.isRequired,
 };
 
-// Combined sample component with table usage
-export default function ResultsTable() {
-  const results = [
-    {
-      db1_id: "ABC123",
-      db2_id: "X001",
-      db3_id: "7890",
-      db4_id: "PQR999",
-      score: 0.92,
-      created_at: "2024-10-01 13:45:22",
-    },
-    {
-      db1_id: "DEF456",
-      db2_id: "X002",
-      db3_id: "7891",
-      db4_id: "PQR998",
-      score: 0.89,
-      created_at: "2024-10-02 09:31:47",
-    },
-    {
-      db1_id: "GHI789",
-      db2_id: "X003",
-      db3_id: "7892",
-      db4_id: "PQR997",
-      score: 0.87,
-      created_at: "2024-10-03 15:12:03",
-    },
-    {
-      db1_id: "JKL321",
-      db2_id: "X004",
-      db3_id: "7893",
-      db4_id: "PQR996",
-      score: 0.85,
-      created_at: "2024-10-04 11:22:10",
-    },
-    {
-      db1_id: "MNO654",
-      db2_id: "X005",
-      db3_id: "7894",
-      db4_id: "PQR995",
-      score: 0.83,
-      created_at: "2024-10-05 17:55:36",
-    },
-  ];
+// Final dynamic ResultsTable
+export default function ResultsTable({ results }) {
+  if (!results || results.length === 0) {
+    return <p className="text-gray-600"></p>;
+  }
 
   return (
-    <div className="overflow-x-auto">
+    <div className="overflow-x-auto my-10">
       <Table>
         <TableHeader>
           <TableRow isHeader>
@@ -123,20 +84,30 @@ export default function ResultsTable() {
             <TableCell>DB2 ID</TableCell>
             <TableCell>DB3 ID</TableCell>
             <TableCell>DB4 ID</TableCell>
-            <TableCell>Relevance Score</TableCell>
             <TableCell>Created At</TableCell>
+            {/* <TableCell>Embedding</TableCell> New column */}
           </TableRow>
         </TableHeader>
         <TableBody>
           {results.map((row, index) => (
             <TableRow key={index}>
               <TableCell>{index + 1}</TableCell>
-              <TableCell>{row.db1_id}</TableCell>
-              <TableCell>{row.db2_id}</TableCell>
-              <TableCell>{row.db3_id}</TableCell>
-              <TableCell>{row.db4_id}</TableCell>
-              <TableCell>{row.score.toFixed(2)}</TableCell>
-              <TableCell>{row.created_at}</TableCell>
+              <TableCell>{row.db1_id || '-'}</TableCell>
+              <TableCell>{row.db2_id || '-'}</TableCell>
+              <TableCell>{row.db3_id || '-'}</TableCell>
+              <TableCell>{row.db4_id || '-'}</TableCell>
+              {/* <TableCell>
+            <div className="max-w-xs overflow-x-auto whitespace-nowrap text-xs">
+              {row.embedding?.slice(0, 5).map((val, idx) => (
+                <span key={idx}>{val.toFixed(3)} </span>
+              ))}
+              {row.embedding?.length > 5 && '...'}
+            </div>
+          </TableCell> */}
+
+                  
+
+              <TableCell>{row.created_at ? new Date(row.created_at).toLocaleString() : '-'}</TableCell>
             </TableRow>
           ))}
         </TableBody>
@@ -144,3 +115,7 @@ export default function ResultsTable() {
     </div>
   );
 }
+
+ResultsTable.propTypes = {
+  results: PropTypes.arrayOf(PropTypes.object).isRequired,
+};
