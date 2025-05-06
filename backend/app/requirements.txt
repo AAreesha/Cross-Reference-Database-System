@@ -7,3 +7,6 @@ psycopg2-binary
 pgvector
 pandas
 openpyxl
+xlrd
+redis
+python-multipart

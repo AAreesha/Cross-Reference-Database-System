@@ -1,18 +1,19 @@
--- Enable the pgvector extension
+-- Enable pgvector extension
 CREATE EXTENSION IF NOT EXISTS vector;
 
--- Create the unified_index table
-CREATE TABLE IF NOT EXISTS unified_index (
+-- Drop old table if needed (for dev environments only)
+DROP TABLE IF EXISTS unified_index;
+
+-- Create updated unified_index table
+CREATE TABLE unified_index (
     id SERIAL PRIMARY KEY,
-    db1_id VARCHAR(255),
-    db2_id VARCHAR(255),
-    db3_id VARCHAR(255),
-    db4_id VARCHAR(255),
-    embedding vector(1536),
+    source_tag TEXT NOT NULL,
+    source_text TEXT NOT NULL,
+    embedding VECTOR(1536) NOT NULL,
     created_at TIMESTAMP DEFAULT NOW()
 );
 
--- Create a vector index for fast semantic search
-CREATE INDEX IF NOT EXISTS unified_idx_embedding 
-ON unified_index USING ivfflat (embedding vector_cosine_ops) 
+-- Create vector index
+CREATE INDEX unified_idx_embedding
+ON unified_index USING ivfflat (embedding vector_cosine_ops)
 WITH (lists = 100);
