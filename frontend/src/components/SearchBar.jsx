@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Search, Play } from 'lucide-react';
 
 const SUGGESTIONS = [
-  'Defense contracts in Ohio',
+  'Department of Defense contracts',
   'Vendors registered for HVAC',
   'Brake assembly procurement',
 ];

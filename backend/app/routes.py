@@ -88,6 +88,11 @@ async def upload_file(
 
 @router.post("/semantic-search/")
 def semantic_search(query: str, db: Session = Depends(get_db)):
+    # Check cache
+    cached = get_cached_result(query)
+    if cached:
+        return {"cached": True, "results": eval(cached)}
+    
     query_embedding = generate_embedding(query)
 
     # Search top 20 results from all dbs, then keep top 5 globally
@@ -127,19 +132,27 @@ def semantic_search(query: str, db: Session = Depends(get_db)):
     # LLM prompt
     messages = [
         SystemMessage(content=(
-            "You are a helpful assistant. Use the context below to answer the user query. "
-            "Reference the sources as [1], [2], etc. If unsure, ask for clarification."
+            "You are a data analysis assistant with access to structured contract data. "
+            "Use the provided context—containing contract opportunities, set-aside types, vendors, agencies, and response deadlines—to answer the user's query accurately. "
+            "Your responses should be concise, relevant, and based strictly on the context. If the context is insufficient, clearly state that. "
+            "Do not generate speculative or external information and do not mention that your answer is based on the provided context in the response. Format results in tables or lists when helpful."
         )),
         HumanMessage(content=f"Context:\n{retrieved_context}"),
         HumanMessage(content=f"Query:\n{query}")
     ]
 
+
     llm = ChatOpenAI(model_name="gpt-4o", temperature=0)
     response = llm(messages)
 
-    return {
+    output = {
         "query": query,
         "retrieved_context": retrieved_context,
         "gpt_response": response.content.strip(),
         "sources": deduped_sources
     }
+
+    # Save to cache
+    set_cached_result(query, output)
+
+    return {"cached": False, **output}

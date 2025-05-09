@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import SearchBar from '../components/SearchBar';
 import ResultsTable from '../components/ResultsTable';
 import Loader from '../components/Loader'; // Make sure this matches your actual spinner component name
+import { semanticSearch } from '../api';
+import ErrorModal from '../components/ErrorModal';
 
 const defaultResults = [
   { id: 1, title: 'Top Contractors by NAICS Code', database: 'PostgreSQL', relevance: 'High' },
@@ -13,20 +15,55 @@ const defaultResults = [
 
 
 const Home = () => {
+  const [errorOpen, setErrorOpen] = useState(false);
+  const [errorType, setErrorType] = useState('generic');
+
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [showResults, setShowResults] = useState(false);
 
-  const handleSearch = async (query) => {
-    setLoading(true);
+const handleSearch = async (query) => {
+  setLoading(true);
+  setShowResults(false);
 
-    // Simulate API delay and return static results
-    setTimeout(() => {
-      setResults(defaultResults); // Replace with real filter logic if needed
-      setLoading(false);
-      setShowResults(true);
-    }, 500);
-  };
+  try {
+    const response = await semanticSearch(query);
+
+    const isCached = response.cached;
+    const data = isCached ? response.results : response;
+
+    const formatted = [
+      {
+        id: 1,
+        title: data.gpt_response,
+        sources: data.sources,
+        cached: isCached
+      },
+    ];
+
+    setResults(formatted);
+  } catch (error) {
+    console.error('Semantic search failed:', error);
+
+    if (error.code === 'ERR_NETWORK') {
+      setErrorType('network');
+    } else if (error.message.includes("quota")) {
+      setErrorType("openaiQuota");
+    } else if (error.message.includes("embedding")) {
+      setErrorType("embeddings");
+    } else {
+      setErrorType("generic");
+    }
+
+    setErrorOpen(true);
+    setResults([]);
+  }
+
+  setLoading(false);
+  setShowResults(true);
+};
+
+
 
   return (
     <div className="relative min-h-screen w-screen flex flex-col items-center bg-gradient-to-r from-[#ffe7f0] via-[#faecf5] to-[#d1c4f9] p-8  overflow-x-hidden">
@@ -65,14 +102,20 @@ const Home = () => {
           {showResults && !loading && results.length > 0 && (
             <div className="mt-6 animate-fade-in">
               <div className="flex justify-between items-center mb-4">
-                <h2 className="text-md text-gray-500">Search Results</h2>
-                <span className="text-sm text-gray-500">Top {results.length} Results</span>
+                {/* <h2 className="text-md text-gray-500">Respons</h2> */}
+                {/* <span className="text-sm text-gray-500">Top {results.length} Results</span> */}
               </div>
               <ResultsTable results={results} />
             </div>
           )}
         </div>
       </div>
+      <ErrorModal
+        isOpen={errorOpen}
+        onClose={() => setErrorOpen(false)}
+        errorType={errorType}
+      />
+
 
       {/* Footer */}
       <footer className="w-full py-4 mt-auto z-10 text-center text-sm text-gray-500">
