@@ -1,7 +1,16 @@
 import React, { useState } from 'react';
 import SearchBar from '../components/SearchBar';
 import ResultsTable from '../components/ResultsTable';
-import { semanticSearch } from '../api';
+import Loader from '../components/Loader'; // Make sure this matches your actual spinner component name
+
+const defaultResults = [
+  { id: 1, title: 'Top Contractors by NAICS Code', database: 'PostgreSQL', relevance: 'High' },
+  { id: 2, title: 'Upcoming Expiring Contracts – DoD', database: 'MongoDB', relevance: 'High' },
+  { id: 3, title: 'Subcontractor Network Map – Raytheon', database: 'Elasticsearch', relevance: 'Medium' },
+  { id: 4, title: 'Award Growth Trends – Small Business Set-Asides', database: 'MySQL', relevance: 'High' },
+  { id: 5, title: 'Firms Approaching 8(a) Graduation', database: 'PostgreSQL', relevance: 'Medium' },
+];
+
 
 const Home = () => {
   const [results, setResults] = useState([]);
@@ -10,36 +19,65 @@ const Home = () => {
 
   const handleSearch = async (query) => {
     setLoading(true);
-    setShowResults(true);
-    try {
-      const response = await semanticSearch(query);
-      setResults(response.results || []);
-    } catch (err) {
-      console.error('Search failed:', err);
-      setResults([]);
-    } finally {
+
+    // Simulate API delay and return static results
+    setTimeout(() => {
+      setResults(defaultResults); // Replace with real filter logic if needed
       setLoading(false);
-    }
+      setShowResults(true);
+    }, 500);
   };
 
   return (
-    <div className="w-screen min-h-screen flex flex-col items-center bg-gradient-to-r from-[#ffe7f0] via-[#faecf5] to-[#d1c4f9] p-8">
-      {!showResults && (
-        <h1 className="text-4xl md:text-5xl font-bold mb-10 bg-gradient-to-r from-[#24235b] to-purple-800 bg-clip-text text-transparent mt-20">
-          One Search. Four Databases.
-        </h1>
-      )}
+    <div className="relative min-h-screen w-screen flex flex-col items-center bg-gradient-to-r from-[#ffe7f0] via-[#faecf5] to-[#d1c4f9] p-8  overflow-x-hidden">
+      {/* Background shape pattern */}
+      <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,...')] opacity-30 z-0"></div>
 
-      <div className="w-full max-w-md mb-6">
-      <SearchBar onSearch={handleSearch} />
+      {/* Main content container */}
+      <div className="container mx-auto px-4 py-16 z-10 max-w-5xl flex-1 flex flex-col">
+        <div className={`transition-all duration-300 ease-in-out ${showResults ? 'mt-50' : 'pt-20'}`}>
+          <div className="text-center mb-8">
+            <h1 className={`transition-all duration-300 ease-in-out ${showResults ? 'text-3xl md:text-4xl' : 'text-5xl md:text-5xl'} font-extrabold mb-4`}>
+              <span className="bg-gradient-to-r from-[#3b3a81] via-purple-700 to-pink-600 bg-clip-text text-transparent">
+                One Search. Four Databases.
+              </span>
+            </h1>
+            {!showResults && (
+              <p className="text-md text-gray-400 max-w-2xl mx-auto pb-3">
+                Search across 4 databases with a single query.
+              </p>
+            )}
+          </div>
 
-        {showResults && <ResultsTable results={results} />}
+          {/* Search bar */}
+          <div className="max-w-2xl mx-auto mb-8 mt-2">
+            <SearchBar onSearch={handleSearch} />
+          </div>
 
+          {/* Loading Spinner */}
+          {loading && (
+            <div className="mt-10 flex justify-center">
+              <Loader />
+            </div>
+          )}
+
+          {/* Results Table */}
+          {showResults && !loading && results.length > 0 && (
+            <div className="mt-6 animate-fade-in">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-md text-gray-500">Search Results</h2>
+                <span className="text-sm text-gray-500">Top {results.length} Results</span>
+              </div>
+              <ResultsTable results={results} />
+            </div>
+          )}
+        </div>
       </div>
 
-      {loading}
-
-      {!loading && showResults && <ResultsTable data={results} />}
+      {/* Footer */}
+      <footer className="w-full py-4 mt-auto z-10 text-center text-sm text-gray-500">
+        © 2025 Cross Reference Database
+      </footer>
     </div>
   );
 };

@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { Search, Play } from 'lucide-react';
-import { ClipLoader } from 'react-spinners';
 
 const SUGGESTIONS = [
   'Defense contracts in Ohio',
@@ -73,11 +72,7 @@ const SearchBar = ({ onSearch }) => {
         )}
       </div>
 
-      {isLoading && (
-        <div className="mt-4 flex justify-center items-center h-12">
-          <ClipLoader color="#8b5cf6" size={32} />
-        </div>
-      )}
+     
     </div>
   );
 };

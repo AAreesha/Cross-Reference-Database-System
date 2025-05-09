@@ -1,121 +1,72 @@
-// Updated ResultsTable.jsx (Dynamic version with props)
-import PropTypes from 'prop-types';
+import React from 'react';
 
-// Table components
-export function Table({ children, className }) {
-  return (
-    <table className={`w-full border-collapse text-xs text-[#343A40] ${className}`}>
-      {children}
-    </table>
-  );
-}
-
-export function TableHeader({ children }) {
-  return (
-    <thead className="sticky top-0 shadow-sm z-0 font-bold text-purple-500">
-      {children}
-    </thead>
-  );
-}
-
-export function TableBody({ children }) {
-  return <tbody className="border">{children}</tbody>;
-}
-
-export function TableRow({ children, isHeader = false, className = "" }) {
-  return (
-    <tr
-      className={`${
-        isHeader
-          ? "bg-purple-100 text-purple-900 text-sm"
-          : "even:bg-purple-50 odd:bg-white"
-      } border-b ${className}`}
-    >
-      {children}
-    </tr>
-  );
-}
-
-export function TableCell({ children }) {
-  return (
-    <td className="pt-3 pb-3 pl-3 pr-4 border border-purple-300">
-      {children}
-    </td>
-  );
-}
-
-// Prop types
-Table.propTypes = {
-  children: PropTypes.node.isRequired,
-  className: PropTypes.string,
-};
-
-TableRow.propTypes = {
-  children: PropTypes.node.isRequired,
-  isHeader: PropTypes.bool,
-  className: PropTypes.string,
-};
-
-TableCell.propTypes = {
-  children: PropTypes.node.isRequired,
-};
-
-TableHeader.propTypes = {
-  children: PropTypes.node.isRequired,
-};
-
-TableBody.propTypes = {
-  children: PropTypes.node.isRequired,
-};
-
-// Final dynamic ResultsTable
-export default function ResultsTable({ results }) {
+const ResultsTable = ({ results }) => {
   if (!results || results.length === 0) {
-    return <p className="text-gray-600"></p>;
+    return (
+    <div className="w-full p-6 text-center bg-white bg-opacity-40 rounded-lg shadow-md">
+        <p className="text-gray-500">No results found</p>
+      </div>
+    );
   }
 
+  // Get all keys from results to use as columns (excluding some fields)
+  const excludeFields = ['id', 'database', 'relevance'];
+  const allKeys = Array.from(
+    new Set(
+      results.flatMap(result => 
+        Object.keys(result).filter(key => !excludeFields.includes(key))
+      )
+    )
+  );
+
+  // Define database badge colors
+  const getDatabaseBadgeClass = (database) => {
+    const colorMap = {
+      'postgres': 'bg-blue-100 text-blue-800',
+      'postgresql': 'bg-blue-100 text-blue-800',
+      'mongodb': 'bg-green-100 text-green-800',
+      'mysql': 'bg-orange-100 text-orange-800',
+      'elasticsearch': 'bg-purple-100 text-purple-800',
+      'default': 'bg-gray-100 text-gray-800'
+    };
+
+    return colorMap[database.toLowerCase()] || colorMap.default;
+  };
+
   return (
-    <div className="overflow-x-auto my-10">
-      <Table>
-        <TableHeader>
-          <TableRow isHeader>
-            <TableCell>Rank</TableCell>
-            <TableCell>DB1 ID</TableCell>
-            <TableCell>DB2 ID</TableCell>
-            <TableCell>DB3 ID</TableCell>
-            <TableCell>DB4 ID</TableCell>
-            <TableCell>Created At</TableCell>
-            {/* <TableCell>Embedding</TableCell> New column */}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {results.map((row, index) => (
-            <TableRow key={index}>
-              <TableCell>{index + 1}</TableCell>
-              <TableCell>{row.db1_id || '-'}</TableCell>
-              <TableCell>{row.db2_id || '-'}</TableCell>
-              <TableCell>{row.db3_id || '-'}</TableCell>
-              <TableCell>{row.db4_id || '-'}</TableCell>
-              {/* <TableCell>
-            <div className="max-w-xs overflow-x-auto whitespace-nowrap text-xs">
-              {row.embedding?.slice(0, 5).map((val, idx) => (
-                <span key={idx}>{val.toFixed(3)} </span>
+  <div className="w-full overflow-x-auto bg-white bg-opacity-40 rounded-lg shadow-lg">
+      <table className="w-full table-auto">
+        <thead>
+          <tr className="bg-gray-50">
+            <th className="px-4 py-2 text-left text-sm font-medium text-gray-500">Database</th>
+            {allKeys.map(key => (
+              <th key={key} className="px-4 py-2 text-left text-sm font-medium text-gray-500 capitalize">
+                {key}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {results.map((result, index) => (
+            <tr key={result.id || index} className="border-t border-gray-200 hover:bg-gray-50">
+              <td className="px-4 py-3">
+                <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getDatabaseBadgeClass(result.database)}`}>
+                  {result.database}
+                </span>
+              </td>
+              {allKeys.map(key => (
+                <td key={`${result.id}-${key}`} className="px-4 py-3 text-sm text-gray-800">
+                  {typeof result[key] === 'object' 
+                    ? JSON.stringify(result[key]) 
+                    : result[key] || '-'}
+                </td>
               ))}
-              {row.embedding?.length > 5 && '...'}
-            </div>
-          </TableCell> */}
-
-                  
-
-              <TableCell>{row.created_at ? new Date(row.created_at).toLocaleString() : '-'}</TableCell>
-            </TableRow>
+            </tr>
           ))}
-        </TableBody>
-      </Table>
+        </tbody>
+      </table>
     </div>
   );
-}
-
-ResultsTable.propTypes = {
-  results: PropTypes.arrayOf(PropTypes.object).isRequired,
 };
+
+export default ResultsTable;
