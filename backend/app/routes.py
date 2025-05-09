@@ -1,5 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
+from langchain.schema import HumanMessage, SystemMessage
+from langchain.chat_models import ChatOpenAI
 from db import SessionLocal
 from models import UnifiedIndex
 from utils import generate_embedding
@@ -82,43 +84,62 @@ async def upload_file(
         "source_tag": source_tag,
         "filename": file.filename
     }
+
+
 @router.post("/semantic-search/")
 def semantic_search(query: str, db: Session = Depends(get_db)):
-    # Check cache first
-    cached = get_cached_result(query)
-    if cached:
-        return {"cached": True, "results": eval(cached)}
-
-    # Generate the query embedding
     query_embedding = generate_embedding(query)
 
-    # Initialize an empty dictionary to store the top 5 results for each source_tag
-    results_per_db = {}
+    # Search top 20 results from all dbs, then keep top 5 globally
+    all_results = []
 
-    # List of source_tags (db1, db2, db3, db4)
-    source_tags = ["db1", "db2", "db3", "db4"]
-
-    # Perform the search for each source_tag
-    for source_tag in source_tags:
-        # Perform the vector similarity search for the current source_tag
+    for source_tag in ["db1", "db2", "db3", "db4"]:
         results = db.query(UnifiedIndex).filter(UnifiedIndex.source_tag == source_tag).order_by(
             UnifiedIndex.embedding.cosine_distance(query_embedding)
-        ).limit(5).all()
+        ).limit(10).all()
 
-        # Store the results for this source_tag
-        results_per_db[source_tag] = [
-            {
+        for r in results:
+            all_results.append({
                 "id": r.id,
                 "source_tag": r.source_tag,
                 "source_text": r.source_text,
-            }
-            for r in results
-        ]
+            })
 
-    # Prepare the final output
-    output = [{"source_tag": tag, "results": results} for tag, results in results_per_db.items()]
+    # Deduplicate and score top 5 globally
+    unique_results = {f"{r['source_tag']}_{r['id']}": r for r in all_results}.values()
+    top_results = list(unique_results)[:5]
 
-    # Cache the results for future reuse
-    set_cached_result(query, output)
+    # Format context like RAG
+    source_index = {}
+    deduped_sources = []
+    numbered_chunks = []
 
-    return {"cached": False, "results": output}
+    for doc in top_results:
+        tag = doc['source_tag']
+        if tag not in source_index:
+            source_index[tag] = len(source_index) + 1
+            deduped_sources.append(tag)
+        source_num = source_index[tag]
+        numbered_chunks.append(f"[{source_num}] {doc['source_text']}")
+
+    retrieved_context = "\n\n".join(numbered_chunks)
+
+    # LLM prompt
+    messages = [
+        SystemMessage(content=(
+            "You are a helpful assistant. Use the context below to answer the user query. "
+            "Reference the sources as [1], [2], etc. If unsure, ask for clarification."
+        )),
+        HumanMessage(content=f"Context:\n{retrieved_context}"),
+        HumanMessage(content=f"Query:\n{query}")
+    ]
+
+    llm = ChatOpenAI(model_name="gpt-4o", temperature=0)
+    response = llm(messages)
+
+    return {
+        "query": query,
+        "retrieved_context": retrieved_context,
+        "gpt_response": response.content.strip(),
+        "sources": deduped_sources
+    }
