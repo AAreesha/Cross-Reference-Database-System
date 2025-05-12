@@ -5,6 +5,7 @@ from langchain.chat_models import ChatOpenAI
 from db import SessionLocal
 from models import UnifiedIndex
 from utils import generate_embedding
+from utils import run_agentic_rag
 from cache import get_cached_result, set_cached_result
 import pandas as pd
 import io
@@ -86,73 +87,156 @@ async def upload_file(
     }
 
 
+# @router.post("/semantic-search/")
+# def semantic_search(query: str, db: Session = Depends(get_db)):
+#     # Check cache
+#     cached = get_cached_result(query)
+#     if cached:
+#         return {"cached": True, "results": eval(cached)}
+    
+#     query_embedding = generate_embedding(query)
+
+#     # Search top 20 results from all dbs, then keep top 5 globally
+#     all_results = []
+
+#     for source_tag in ["db1", "db2", "db3", "db4"]:
+#         results = db.query(UnifiedIndex).filter(UnifiedIndex.source_tag == source_tag).order_by(
+#             UnifiedIndex.embedding.cosine_distance(query_embedding)
+#         ).limit(10).all()
+
+#         for r in results:
+#             all_results.append({
+#                 "id": r.id,
+#                 "source_tag": r.source_tag,
+#                 "source_text": r.source_text,
+#             })
+
+#     # Deduplicate and score top 5 globally
+#     unique_results = {f"{r['source_tag']}_{r['id']}": r for r in all_results}.values()
+#     top_results = list(unique_results)[:5]
+
+#     # Format context like RAG
+#     source_index = {}
+#     deduped_sources = []
+#     numbered_chunks = []
+
+#     for doc in top_results:
+#         tag = doc['source_tag']
+#         if tag not in source_index:
+#             source_index[tag] = len(source_index) + 1
+#             deduped_sources.append(tag)
+#         source_num = source_index[tag]
+#         numbered_chunks.append(f"[{source_num}] {doc['source_text']}")
+
+#     retrieved_context = "\n\n".join(numbered_chunks)
+
+#     # LLM prompt
+#     messages = [
+#         SystemMessage(content=(
+#             "You are a data analysis assistant with access to structured contract data. "
+#             "Use the provided context—containing contract opportunities, set-aside types, vendors, agencies, and response deadlines—to answer the user's query accurately. "
+#             "Your responses should be concise, relevant, and based strictly on the context. If the context is insufficient, clearly state that. "
+#             "Do not generate speculative or external information and do not mention that your answer is based on the provided context in the response. Format results in tables or lists when helpful."
+#         )),
+#         HumanMessage(content=f"Context:\n{retrieved_context}"),
+#         HumanMessage(content=f"Query:\n{query}")
+#     ]
+
+
+#     llm = ChatOpenAI(model_name="gpt-4o", temperature=0)
+#     response = llm(messages)
+
+#     output = {
+#         "query": query,
+#         "retrieved_context": retrieved_context,
+#         "gpt_response": response.content.strip(),
+#         "sources": deduped_sources
+#     }
+
+#     # Save to cache
+#     set_cached_result(query, output)
+
+#     return {"cached": False, **output}
+
+# @router.post("/semantic-search/")
+# def semantic_search(query: str):
+#     cached = get_cached_result(query)
+#     if cached:
+#         return {"cached": True, "result": eval(cached)}
+
+#     try:
+#         response = run_agentic_rag(query)
+
+#         # ✅ Extract readable output from CrewOutput
+#         if hasattr(response, "output"):
+#             gpt_response = response.output  # Most likely attribute for final output
+#         else:
+#             gpt_response = str(response)  # Fallback if .output doesn't exist
+
+#         result = {
+#             "query": query,
+#             "gpt_response": gpt_response
+#         }
+#         set_cached_result(query, result)
+#         return {"cached": False, **result}
+
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=f"Agentic RAG failed: {str(e)}")
+
 @router.post("/semantic-search/")
 def semantic_search(query: str, db: Session = Depends(get_db)):
-    # Check cache
     cached = get_cached_result(query)
     if cached:
-        return {"cached": True, "results": eval(cached)}
-    
-    query_embedding = generate_embedding(query)
+        return {"cached": True, "result": eval(cached)}
 
-    # Search top 20 results from all dbs, then keep top 5 globally
-    all_results = []
+    try:
+        query_embedding = generate_embedding(query)
+        all_results = []
 
-    for source_tag in ["db1", "db2", "db3", "db4"]:
-        results = db.query(UnifiedIndex).filter(UnifiedIndex.source_tag == source_tag).order_by(
-            UnifiedIndex.embedding.cosine_distance(query_embedding)
-        ).limit(10).all()
+        for source_tag in ["db1", "db2", "db3", "db4"]:
+            results = db.query(UnifiedIndex).filter(UnifiedIndex.source_tag == source_tag).order_by(
+                UnifiedIndex.embedding.cosine_distance(query_embedding)
+            ).limit(10).all()
 
-        for r in results:
-            all_results.append({
-                "id": r.id,
-                "source_tag": r.source_tag,
-                "source_text": r.source_text,
-            })
+            for r in results:
+                all_results.append({
+                    "id": r.id,
+                    "source_tag": r.source_tag,
+                    "source_text": r.source_text,
+                })
 
-    # Deduplicate and score top 5 globally
-    unique_results = {f"{r['source_tag']}_{r['id']}": r for r in all_results}.values()
-    top_results = list(unique_results)[:5]
+        # Deduplicate
+        unique_results = {f"{r['source_tag']}_{r['id']}": r for r in all_results}.values()
+        top_results = list(unique_results)[:5]
 
-    # Format context like RAG
-    source_index = {}
-    deduped_sources = []
-    numbered_chunks = []
+        # Format context
+        source_index = {}
+        deduped_sources = []
+        numbered_chunks = []
 
-    for doc in top_results:
-        tag = doc['source_tag']
-        if tag not in source_index:
-            source_index[tag] = len(source_index) + 1
-            deduped_sources.append(tag)
-        source_num = source_index[tag]
-        numbered_chunks.append(f"[{source_num}] {doc['source_text']}")
+        for doc in top_results:
+            tag = doc['source_tag']
+            if tag not in source_index:
+                source_index[tag] = len(source_index) + 1
+                deduped_sources.append(tag)
+            source_num = source_index[tag]
+            numbered_chunks.append(f"[{source_num}] {doc['source_text']}")
 
-    retrieved_context = "\n\n".join(numbered_chunks)
+        retrieved_context = "\n\n".join(numbered_chunks)
 
-    # LLM prompt
-    messages = [
-        SystemMessage(content=(
-            "You are a data analysis assistant with access to structured contract data. "
-            "Use the provided context—containing contract opportunities, set-aside types, vendors, agencies, and response deadlines—to answer the user's query accurately. "
-            "Your responses should be concise, relevant, and based strictly on the context. If the context is insufficient, clearly state that. "
-            "Do not generate speculative or external information and do not mention that your answer is based on the provided context in the response. Format results in tables or lists when helpful."
-        )),
-        HumanMessage(content=f"Context:\n{retrieved_context}"),
-        HumanMessage(content=f"Query:\n{query}")
-    ]
+        # Pass context to CrewAI agent
+        response = run_agentic_rag(query, retrieved_context)
+        gpt_response = getattr(response, "output", str(response))
 
+        result = {
+            "query": query,
+            "gpt_response": gpt_response,
+            "retrieved_context": retrieved_context,
+            "sources": deduped_sources
+        }
 
-    llm = ChatOpenAI(model_name="gpt-4o", temperature=0)
-    response = llm(messages)
+        set_cached_result(query, result)
+        return {"cached": False, **result}
 
-    output = {
-        "query": query,
-        "retrieved_context": retrieved_context,
-        "gpt_response": response.content.strip(),
-        "sources": deduped_sources
-    }
-
-    # Save to cache
-    set_cached_result(query, output)
-
-    return {"cached": False, **output}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Agentic RAG failed: {str(e)}")
