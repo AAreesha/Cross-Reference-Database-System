@@ -2,13 +2,19 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from langchain.schema import HumanMessage, SystemMessage
 from langchain.chat_models import ChatOpenAI
-from db import SessionLocal
-from models import UnifiedIndex
-from utils import generate_embedding
-from utils import run_agentic_rag
+from sqlalchemy import func, desc
 from cache import get_cached_result, set_cached_result
 import pandas as pd
 import io
+from uuid import uuid4
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func, desc
+from db import SessionLocal
+from models import UnifiedIndex
+from utils import generate_embedding, as_pgvector
+import uuid
+from fastapi import BackgroundTasks
+from fastapi.responses import JSONResponse
 
 
 router = APIRouter()
@@ -87,101 +93,71 @@ async def upload_file(
     }
 
 
-# @router.post("/semantic-search/")
-# def semantic_search(query: str, db: Session = Depends(get_db)):
-#     # Check cache
-#     cached = get_cached_result(query)
-#     if cached:
-#         return {"cached": True, "results": eval(cached)}
-    
-#     query_embedding = generate_embedding(query)
+# Dictionary to track file upload status
+upload_status = {}  # Format: {upload_id: {status: str, inserted: int}}
 
-#     # Search top 20 results from all dbs, then keep top 5 globally
-#     all_results = []
+@router.post("/files/ingest")
+async def ingest_file(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    source_tag: str = Form(...),
+    db: Session = Depends(get_db)
+):
+    upload_id = str(uuid4())
+    upload_status[upload_id] = {"status": "file upload pending", "inserted": 0}
 
-#     for source_tag in ["db1", "db2", "db3", "db4"]:
-#         results = db.query(UnifiedIndex).filter(UnifiedIndex.source_tag == source_tag).order_by(
-#             UnifiedIndex.embedding.cosine_distance(query_embedding)
-#         ).limit(10).all()
+    contents = await file.read()
+    background_tasks.add_task(process_upload_file, contents, file.filename, source_tag, upload_id, db)
 
-#         for r in results:
-#             all_results.append({
-#                 "id": r.id,
-#                 "source_tag": r.source_tag,
-#                 "source_text": r.source_text,
-#             })
+    return {"upload_id": upload_id, "status": "file upload pending"}
 
-#     # Deduplicate and score top 5 globally
-#     unique_results = {f"{r['source_tag']}_{r['id']}": r for r in all_results}.values()
-#     top_results = list(unique_results)[:5]
+@router.get("/files/status/{upload_id}")
+async def get_upload_status(upload_id: str):
+    if upload_id not in upload_status:
+        raise HTTPException(status_code=404, detail="Invalid upload_id")
+    return upload_status[upload_id]
 
-#     # Format context like RAG
-#     source_index = {}
-#     deduped_sources = []
-#     numbered_chunks = []
+def process_upload_file(contents, filename, source_tag, upload_id, db):
+    try:
+        if filename.endswith(".csv"):
+            try:
+                df = pd.read_csv(io.StringIO(contents.decode("utf-8")))
+            except UnicodeDecodeError:
+                df = pd.read_csv(io.StringIO(contents.decode("cp1252")))
+        else:
+            df = pd.read_excel(io.BytesIO(contents), engine="openpyxl")
 
-#     for doc in top_results:
-#         tag = doc['source_tag']
-#         if tag not in source_index:
-#             source_index[tag] = len(source_index) + 1
-#             deduped_sources.append(tag)
-#         source_num = source_index[tag]
-#         numbered_chunks.append(f"[{source_num}] {doc['source_text']}")
+        df = df.dropna(how="all").drop_duplicates()
+        records = []
+        inserted = 0
 
-#     retrieved_context = "\n\n".join(numbered_chunks)
+        for _, row in df.iterrows():
+            combined = " ".join(str(val).strip() for val in row if pd.notna(val)).strip()
+            if not combined or combined.lower() == "nan":
+                continue
 
-#     # LLM prompt
-#     messages = [
-#         SystemMessage(content=(
-#             "You are a data analysis assistant with access to structured contract data. "
-#             "Use the provided context—containing contract opportunities, set-aside types, vendors, agencies, and response deadlines—to answer the user's query accurately. "
-#             "Your responses should be concise, relevant, and based strictly on the context. If the context is insufficient, clearly state that. "
-#             "Do not generate speculative or external information and do not mention that your answer is based on the provided context in the response. Format results in tables or lists when helpful."
-#         )),
-#         HumanMessage(content=f"Context:\n{retrieved_context}"),
-#         HumanMessage(content=f"Query:\n{query}")
-#     ]
+            try:
+                embedding = generate_embedding(combined)
+            except Exception as e:
+                print(f"⚠️ Embedding error: {e}")
+                continue
 
+            records.append(UnifiedIndex(
+                source_tag=source_tag,
+                source_text=combined[:10000],
+                embedding=embedding
+            ))
+            inserted += 1
 
-#     llm = ChatOpenAI(model_name="gpt-4o", temperature=0)
-#     response = llm(messages)
+        if records:
+            db.bulk_save_objects(records)
+            db.commit()
 
-#     output = {
-#         "query": query,
-#         "retrieved_context": retrieved_context,
-#         "gpt_response": response.content.strip(),
-#         "sources": deduped_sources
-#     }
+        upload_status[upload_id] = {"status": "completed", "inserted": inserted}
 
-#     # Save to cache
-#     set_cached_result(query, output)
+    except Exception as e:
+        upload_status[upload_id] = {"status": f"failed: {str(e)}", "inserted": 0}
 
-#     return {"cached": False, **output}
-
-# @router.post("/semantic-search/")
-# def semantic_search(query: str):
-#     cached = get_cached_result(query)
-#     if cached:
-#         return {"cached": True, "result": eval(cached)}
-
-#     try:
-#         response = run_agentic_rag(query)
-
-#         # ✅ Extract readable output from CrewOutput
-#         if hasattr(response, "output"):
-#             gpt_response = response.output  # Most likely attribute for final output
-#         else:
-#             gpt_response = str(response)  # Fallback if .output doesn't exist
-
-#         result = {
-#             "query": query,
-#             "gpt_response": gpt_response
-#         }
-#         set_cached_result(query, result)
-#         return {"cached": False, **result}
-
-#     except Exception as e:
-#         raise HTTPException(status_code=500, detail=f"Agentic RAG failed: {str(e)}")
 
 @router.post("/semantic-search/")
 def semantic_search(query: str, db: Session = Depends(get_db)):
@@ -190,13 +166,39 @@ def semantic_search(query: str, db: Session = Depends(get_db)):
         return {"cached": True, "result": eval(cached)}
 
     try:
-        query_embedding = generate_embedding(query)
+        query_embedding = as_pgvector(generate_embedding(query))
         all_results = []
 
+        # Prepare ts_query for Postgres full-text search
+        ts_query = query.replace("'", "''")  # basic escaping
+        fts_query = func.plainto_tsquery('english', ts_query)
+
         for source_tag in ["db1", "db2", "db3", "db4"]:
-            results = db.query(UnifiedIndex).filter(UnifiedIndex.source_tag == source_tag).order_by(
-                UnifiedIndex.embedding.cosine_distance(query_embedding)
-            ).limit(10).all()
+            results = (
+                db.query(
+                    UnifiedIndex.id,
+                    UnifiedIndex.source_tag,
+                    UnifiedIndex.source_text,
+                    func.cosine_distance(UnifiedIndex.embedding, query_embedding).label("cos_sim"),
+                    func.ts_rank_cd(
+                        func.to_tsvector('english', UnifiedIndex.source_text),
+                        fts_query
+                    ).label("fts_score")
+                )
+                .filter(UnifiedIndex.source_tag == source_tag)
+                .filter(func.to_tsvector('english', UnifiedIndex.source_text).op('@@')(fts_query))
+                .order_by(
+                    desc(
+                        0.6 * func.cosine_distance(UnifiedIndex.embedding, query_embedding) +
+                        0.4 * func.ts_rank_cd(
+                            func.to_tsvector('english', UnifiedIndex.source_text),
+                            fts_query
+                        )
+                    )
+                )
+                .limit(10)
+                .all()
+            )
 
             for r in results:
                 all_results.append({
@@ -224,13 +226,40 @@ def semantic_search(query: str, db: Session = Depends(get_db)):
 
         retrieved_context = "\n\n".join(numbered_chunks)
 
-        # Pass context to CrewAI agent
-        response = run_agentic_rag(query, retrieved_context)
-        gpt_response = getattr(response, "output", str(response))
+        # Chain: Step 1 - Extract relevant info
+        llm = ChatOpenAI(model_name="gpt-4o", temperature=0)
+
+        extraction_messages = [
+            SystemMessage(content=(
+                "You are a data extraction expert.\n"
+                "You will be given unstructured data rows extracted from Excel or CSV files. Your task is to extract rows that are semantically or contextually relevant to the user's query.\n"
+                "A row is considered relevant if it:\n"
+                "- Mentions related keywords, phrases, or entities from the query (even if worded differently)\n"
+                "- Refers to the same location, organization, dates, values, or contract types\n"
+                "- Involves similar activity or service types as the query\n\n"
+                "Return only the relevant rows in full. DO NOT rephrase or summarize. Preserve the original formatting.\n"
+                "If no match is found, return an empty response."
+            )),
+            HumanMessage(content=f"Query: {query}\n\nContext:\n{retrieved_context}")
+        ]
+
+
+        extracted_content = llm(extraction_messages).content.strip()
+
+        # Chain: Step 2 - Format response
+        formatting_messages = [
+            SystemMessage(content=(
+                "You are a formatter assistant. Take the extracted contract entries and structure them in clean markdown format."
+                "Use tables where appropriate. Be clear, direct, and structured."
+            )),
+            HumanMessage(content=f"Query: {query}\n\nExtracted Entries:\n{extracted_content}")
+        ]
+
+        structured_output = llm(formatting_messages).content.strip()
 
         result = {
             "query": query,
-            "gpt_response": gpt_response,
+            "gpt_response": structured_output,
             "retrieved_context": retrieved_context,
             "sources": deduped_sources
         }
@@ -239,4 +268,4 @@ def semantic_search(query: str, db: Session = Depends(get_db)):
         return {"cached": False, **result}
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Agentic RAG failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Semantic Search LLM failed: {str(e)}")

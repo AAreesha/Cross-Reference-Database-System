@@ -5,6 +5,8 @@ from langchain.chat_models import ChatOpenAI
 from crewai.tools import BaseTool
 from db import SessionLocal
 from models import UnifiedIndex
+from sqlalchemy import cast, text
+from pgvector.sqlalchemy import Vector
 
 client = OpenAI()  # Uses OPENAI_API_KEY from .env
 MAX_CHARS = 10000  # Safe truncation limit
@@ -60,58 +62,66 @@ def generate_embedding(text: str) -> list:
     avg_embedding = mean(array(embeddings), axis=0)
     return avg_embedding.tolist()
 
-
+def as_pgvector(vec: list):
+    # Convert Python list to Postgres vector literal like: '[0.1, 0.2, ...]'::vector
+    vec_str = str(vec).replace('[', "'[").replace(']', "]'")
+    return cast(text(vec_str), Vector)
 
 vector_tool = PgVectorSearchTool()
 
-
-semantic_agent = Agent(
-    role="RAG Retrieval Planner",
-    goal="Answer user questions accurately using semantic search over structured contracts.",
+retrieval_agent = Agent(
+    role="Context-Aware Retriever",
+    goal="Precisely extract all passages from the provided context that are highly relevant to the user's query.",
+    backstory="You are highly skilled at searching structured and unstructured data to identify directly related information, avoiding irrelevant filler or vague references.",
     tools=[vector_tool],
-    backstory="You are an intelligent agent with access to a vector search tool, capable of iterating, planning and deciding which data sources to consult and how to synthesize answers.",
-    verbose=True,
-    llm=ChatOpenAI(model_name="gpt-4o", temperature=0)
+    llm=ChatOpenAI(model_name="gpt-4o", temperature=0),
+    verbose=True
 )
 
-# def run_agentic_rag(query):
-#     task = Task(
-#         description=f"Answer the following question: '{query}' using vector retrieval and reasoning.",
-#         expected_output="Concise, context-based answer with structured format (e.g., table/list) if possible.",
-#         agent=semantic_agent
-#     )
+formatter_agent = Agent(
+    role="Response Structurer",
+    goal="Format extracted content into a clear and well-structured answer that is easy to read and directly informative.",
+    backstory="You format important data for business analysts. You never ask for more info—use only what is given to create helpful, markdown-formatted outputs.",
+    llm=ChatOpenAI(model_name="gpt-4o", temperature=0),
+    verbose=True
+)
 
-#     crew = Crew(
-#         agents=[semantic_agent],
-#         tasks=[task],
-#         verbose=True
-#     )
+def run_dual_agent_rag(query: str, retrieved_context: str):
+    if len(retrieved_context) > 10000:
+        retrieved_context = retrieved_context[:10000]
 
-#     return crew.kickoff()
-
-def run_agentic_rag(query: str, retrieved_context: str):
-    from langchain.chat_models import ChatOpenAI
-
-    context_prompt = (
-        "You are a data analysis assistant with access to structured contract data. "
-        "Use the provided context—containing contract opportunities, set-aside types, vendors, agencies, and response deadlines—to answer the user's query accurately. "
-        "Your responses should be concise, relevant, and based strictly on the context. If the context is insufficient, clearly state that. "
-        "Format results in tables or lists when helpful."
+    extract_task = Task(
+        description=(
+            "Extract all key parts from the context that are relevant to the query. Do NOT include generic or unrelated content. "
+            "Avoid repeating the query. Be comprehensive but precise. Extract at least 3 concrete facts or excerpts. Do not ask for clarification."
+        ),
+        input=f"Query: {query}\n\nContext:\n{retrieved_context}",
+        expected_output="Extracted text that directly answers the query, without extra commentary.",
+        agent=retrieval_agent
     )
 
-    full_input = f"Context:\n{retrieved_context}\n\nQuery:\n{query}"
-
-    task = Task(
-        description=context_prompt,
-        expected_output="A well-structured answer with no hallucinations.",
-        agent=semantic_agent,
-        input=full_input
+    format_task = Task(
+        description=(
+            "Take the extracted relevant information and format it into a structured, human-friendly output. "
+            "Use markdown formatting (tables or lists) where applicable. Do not ask follow-up questions. Never say 'please provide'."
+        ),
+        expected_output=(
+            "A clean, structured summary or table using the extracted content. No vague responses. "
+            "If nothing is relevant, return: 'No relevant information found in the context.'"
+        ),
+        agent=formatter_agent,
+        input_from=extract_task
     )
 
     crew = Crew(
-        agents=[semantic_agent],
-        tasks=[task],
-        verbose=True
+        agents=[retrieval_agent, formatter_agent],
+        tasks=[extract_task, format_task],
+        verbose=True,
+        process="sequential"
     )
 
-    return crew.kickoff()
+    result = crew.kickoff()
+    if not hasattr(result, "output") or not result.output.strip():
+        return "⚠️ Retrieval agent returned no useful output."
+
+    return result.output

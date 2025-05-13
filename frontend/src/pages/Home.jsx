@@ -29,15 +29,13 @@ const handleSearch = async (query) => {
   try {
     const response = await semanticSearch(query);
 
-    const isCached = response.cached;
-    const data = isCached ? response.results : response;
-
+    // Use the response directly, whether cached or not
     const formatted = [
       {
         id: 1,
-        title: data.gpt_response,
-        sources: data.sources,
-        cached: isCached
+        title: response.gpt_response || 'No response generated.',
+        sources: response.sources || [],
+        cached: response.cached || false
       },
     ];
 
@@ -47,9 +45,9 @@ const handleSearch = async (query) => {
 
     if (error.code === 'ERR_NETWORK') {
       setErrorType('network');
-    } else if (error.message.includes("quota")) {
+    } else if (error.message?.includes("quota")) {
       setErrorType("openaiQuota");
-    } else if (error.message.includes("embedding")) {
+    } else if (error.message?.includes("embedding")) {
       setErrorType("embeddings");
     } else {
       setErrorType("generic");
