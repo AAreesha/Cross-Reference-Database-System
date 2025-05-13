@@ -24,3 +24,9 @@ export const semanticSearch = async (query) => {
   });
   return res.data;
 };
+
+
+export const getSuggestions = async () => {
+  const res = await axios.get(`${API_BASE_URL}/suggestions/`);
+  return res.data.suggestions || [];
+};

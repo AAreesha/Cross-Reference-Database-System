@@ -1,14 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Search, Play } from 'lucide-react';
+import { getSuggestions } from '../api'; 
 
-const SUGGESTIONS = [
-  'Department of Defense contracts',
-  'Vendors registered for HVAC',
-  'Brake assembly procurement',
-];
+
+
 
 const SearchBar = ({ onSearch }) => {
   const [query, setQuery] = useState('');
+  const [suggestions, setSuggestions] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
 
@@ -19,6 +18,27 @@ const SearchBar = ({ onSearch }) => {
     await onSearch(query); // trigger parent's semanticSearch
     setIsLoading(false);
   };
+
+  // 🔁 Fetch suggestions every time the query changes
+  useEffect(() => {
+    const fetchSuggestions = async () => {
+      if (!query.trim()) return;
+
+      try {
+        const data = await getSuggestions(); // Fetch suggestions from Redis
+        const filtered = data.filter((item) =>
+          item.toLowerCase().includes(query.toLowerCase())
+        );
+        setSuggestions(filtered);
+        setShowSuggestions(true);
+      } catch (err) {
+        console.error('Failed to load suggestions:', err);
+      }
+    };
+
+    fetchSuggestions();
+  }, [query]);
+
 
   const handleInputChange = (e) => {
     const value = e.target.value;
@@ -57,7 +77,7 @@ const SearchBar = ({ onSearch }) => {
 
         {showSuggestions && (
           <div className="absolute w-full mt-2 bg-white rounded-lg shadow-lg z-[100] max-h-60 overflow-y-auto">
-            {SUGGESTIONS.filter((s) =>
+            {suggestions.filter((s) =>
               s.toLowerCase().includes(query.toLowerCase())
             ).map((suggestion, idx) => (
               <div

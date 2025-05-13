@@ -15,7 +15,7 @@ from utils import generate_embedding, as_pgvector
 import uuid
 from fastapi import BackgroundTasks
 from fastapi.responses import JSONResponse
-
+from cache import redis_client
 
 router = APIRouter()
 
@@ -114,11 +114,17 @@ async def ingest_file(
 @router.get("/files/status/{upload_id}")
 async def get_upload_status(upload_id: str):
     if upload_id not in upload_status:
+        print(f"[Status Check] Invalid upload_id: {upload_id}")
         raise HTTPException(status_code=404, detail="Invalid upload_id")
-    return upload_status[upload_id]
+    status_info = upload_status[upload_id]
+    print(f"[Status Check] ID={upload_id} -> {status_info}")
+    return status_info
+
 
 def process_upload_file(contents, filename, source_tag, upload_id, db):
+    print(f"[Processing Start] ID={upload_id}, Source={source_tag}, File={filename}")
     try:
+        # File decoding
         if filename.endswith(".csv"):
             try:
                 df = pd.read_csv(io.StringIO(contents.decode("utf-8")))
@@ -127,11 +133,15 @@ def process_upload_file(contents, filename, source_tag, upload_id, db):
         else:
             df = pd.read_excel(io.BytesIO(contents), engine="openpyxl")
 
+        print(f"[Processing] Parsed file with {len(df)} rows (raw)")
+
         df = df.dropna(how="all").drop_duplicates()
+        print(f"[Processing] After cleaning: {len(df)} rows")
+
         records = []
         inserted = 0
 
-        for _, row in df.iterrows():
+        for i, (_, row) in enumerate(df.iterrows()):
             combined = " ".join(str(val).strip() for val in row if pd.notna(val)).strip()
             if not combined or combined.lower() == "nan":
                 continue
@@ -139,7 +149,7 @@ def process_upload_file(contents, filename, source_tag, upload_id, db):
             try:
                 embedding = generate_embedding(combined)
             except Exception as e:
-                print(f"⚠️ Embedding error: {e}")
+                print(f"[Row {i}] ⚠️ Embedding error: {e}")
                 continue
 
             records.append(UnifiedIndex(
@@ -152,19 +162,24 @@ def process_upload_file(contents, filename, source_tag, upload_id, db):
         if records:
             db.bulk_save_objects(records)
             db.commit()
+            print(f"[Processing Complete] ID={upload_id}, Inserted={inserted}")
+        else:
+            print(f"[Processing Complete] ID={upload_id}, No records to insert")
 
         upload_status[upload_id] = {"status": "completed", "inserted": inserted}
 
     except Exception as e:
-        upload_status[upload_id] = {"status": f"failed: {str(e)}", "inserted": 0}
+        error_msg = f"failed: {str(e)}"
+        print(f"[Processing Failed] ID={upload_id}, Error={error_msg}")
+        upload_status[upload_id] = {"status": error_msg, "inserted": 0}
+
 
 
 @router.post("/semantic-search/")
 def semantic_search(query: str, db: Session = Depends(get_db)):
     cached = get_cached_result(query)
     if cached:
-        return {"cached": True, "result": eval(cached)}
-
+        return {"cached": True, **eval(cached)}
     try:
         query_embedding = as_pgvector(generate_embedding(query))
         all_results = []
@@ -201,15 +216,23 @@ def semantic_search(query: str, db: Session = Depends(get_db)):
             )
 
             for r in results:
+                score = 0.6 * r.cos_sim + 0.4 * r.fts_score
                 all_results.append({
                     "id": r.id,
                     "source_tag": r.source_tag,
                     "source_text": r.source_text,
+                    "score": score
                 })
 
-        # Deduplicate
+
+        # Deduplicate if needed
         unique_results = {f"{r['source_tag']}_{r['id']}": r for r in all_results}.values()
-        top_results = list(unique_results)[:5]
+
+        # Sort all merged results by score
+        sorted_results = sorted(unique_results, key=lambda r: r['score'], reverse=True)
+
+        # Pick top 5
+        top_results = sorted_results[:5]
 
         # Format context
         source_index = {}
@@ -255,6 +278,8 @@ def semantic_search(query: str, db: Session = Depends(get_db)):
             HumanMessage(content=f"Query: {query}\n\nExtracted Entries:\n{extracted_content}")
         ]
 
+
+
         structured_output = llm(formatting_messages).content.strip()
 
         result = {
@@ -269,3 +294,9 @@ def semantic_search(query: str, db: Session = Depends(get_db)):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Semantic Search LLM failed: {str(e)}")
+
+
+@router.get("/suggestions/")
+def get_cached_queries():
+    suggestions = list(redis_client.smembers("cached_queries"))
+    return {"suggestions": sorted(suggestions, key=str.lower)}
