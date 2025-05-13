@@ -177,83 +177,51 @@ def process_upload_file(contents, filename, source_tag, upload_id, db):
 
 @router.post("/semantic-search/")
 def semantic_search(query: str, db: Session = Depends(get_db)):
+    # Check cache
     cached = get_cached_result(query)
     if cached:
         return {"cached": True, **eval(cached)}
-    try:
-        query_embedding = as_pgvector(generate_embedding(query))
-        all_results = []
 
-        # Prepare ts_query for Postgres full-text search
-        ts_query = query.replace("'", "''")  # basic escaping
-        fts_query = func.plainto_tsquery('english', ts_query)
+    query_embedding = generate_embedding(query)
+    all_results = []
 
-        for source_tag in ["db1", "db2", "db3", "db4"]:
-            results = (
-                db.query(
-                    UnifiedIndex.id,
-                    UnifiedIndex.source_tag,
-                    UnifiedIndex.source_text,
-                    func.cosine_distance(UnifiedIndex.embedding, query_embedding).label("cos_sim"),
-                    func.ts_rank_cd(
-                        func.to_tsvector('english', UnifiedIndex.source_text),
-                        fts_query
-                    ).label("fts_score")
-                )
-                .filter(UnifiedIndex.source_tag == source_tag)
-                .filter(func.to_tsvector('english', UnifiedIndex.source_text).op('@@')(fts_query))
-                .order_by(
-                    desc(
-                        0.6 * func.cosine_distance(UnifiedIndex.embedding, query_embedding) +
-                        0.4 * func.ts_rank_cd(
-                            func.to_tsvector('english', UnifiedIndex.source_text),
-                            fts_query
-                        )
-                    )
-                )
-                .limit(10)
-                .all()
-            )
+    # Collect top 10 from each source based on cosine similarity
+    for source_tag in ["db1", "db2", "db3", "db4"]:
+        results = db.query(UnifiedIndex).filter(UnifiedIndex.source_tag == source_tag).order_by(
+            UnifiedIndex.embedding.cosine_distance(query_embedding)
+        ).limit(10).all()
 
-            for r in results:
-                score = 0.6 * r.cos_sim + 0.4 * r.fts_score
-                all_results.append({
-                    "id": r.id,
-                    "source_tag": r.source_tag,
-                    "source_text": r.source_text,
-                    "score": score
-                })
+        for r in results:
+            all_results.append({
+                "id": r.id,
+                "source_tag": r.source_tag,
+                "source_text": r.source_text,
+            })
 
+    # Deduplicate and score top 5 globally
+    unique_results = {f"{r['source_tag']}_{r['id']}": r for r in all_results}.values()
+    top_results = list(unique_results)[:5]
 
-        # Deduplicate if needed
-        unique_results = {f"{r['source_tag']}_{r['id']}": r for r in all_results}.values()
+    # Format context for LLM
+    source_index = {}
+    deduped_sources = []
+    numbered_chunks = []
 
-        # Sort all merged results by score
-        sorted_results = sorted(unique_results, key=lambda r: r['score'], reverse=True)
+    for doc in top_results:
+        tag = doc['source_tag']
+        if tag not in source_index:
+            source_index[tag] = len(source_index) + 1
+            deduped_sources.append(tag)
+        source_num = source_index[tag]
+        numbered_chunks.append(f"[{source_num}] {doc['source_text']}")
 
-        # Pick top 5
-        top_results = sorted_results[:5]
-
-        # Format context
-        source_index = {}
-        deduped_sources = []
-        numbered_chunks = []
-
-        for doc in top_results:
-            tag = doc['source_tag']
-            if tag not in source_index:
-                source_index[tag] = len(source_index) + 1
-                deduped_sources.append(tag)
-            source_num = source_index[tag]
-            numbered_chunks.append(f"[{source_num}] {doc['source_text']}")
-
-        retrieved_context = "\n\n".join(numbered_chunks)
+    retrieved_context = "\n\n".join(numbered_chunks)
 
         # Chain: Step 1 - Extract relevant info
-        llm = ChatOpenAI(model_name="gpt-4o", temperature=0)
+    llm = ChatOpenAI(model_name="gpt-4o", temperature=0)
 
-        extraction_messages = [
-            SystemMessage(content=(
+    extraction_messages = [
+    SystemMessage(content=(
                 "You are a data extraction expert.\n"
                 "You will be given unstructured data rows extracted from Excel or CSV files. Your task is to extract rows that are semantically or contextually relevant to the user's query.\n"
                 "A row is considered relevant if it:\n"
@@ -264,36 +232,64 @@ def semantic_search(query: str, db: Session = Depends(get_db)):
                 "If no match is found, return an empty response."
             )),
             HumanMessage(content=f"Query: {query}\n\nContext:\n{retrieved_context}")
-        ]
+    ]
 
 
-        extracted_content = llm(extraction_messages).content.strip()
+    extracted_content = llm(extraction_messages).content.strip()
 
         # Chain: Step 2 - Format response
-        formatting_messages = [
+        # formatting_messages = [
+        #     SystemMessage(content=(
+        #         "You are a formatter assistant. Take the extracted contract entries and structure them in clean markdown format."
+        #         "Use tables where appropriate. Be clear, direct, and structured."
+        #     )),
+        #     HumanMessage(content=f"Query: {query}\n\nExtracted Entries:\n{extracted_content}")
+        # ]
+
+        #Table
+        # formatting_messages = [
+        #     SystemMessage(content=(
+        #         "You are a formatter assistant.\n"
+        #         "Your job is to take raw row-based data and format it cleanly in Markdown.\n\n"
+        #         "Instructions:\n"
+        #         "- Start with a heading: `# Results for <query>`\n"
+        #         "- For each row, use `## Entry <number>` as a subheading\n"
+        #         "- Use a table with two columns: `Field` and `Value`\n"
+        #         "- Keep original values; do not reword or summarize\n"
+        #         "- Output only valid Markdown"
+        #     )),
+        #     HumanMessage(content=f"Query: {query}\n\nExtracted Entries:\n{extracted_content}")
+        # ]
+
+        #Bullets
+    formatting_messages = [
             SystemMessage(content=(
-                "You are a formatter assistant. Take the extracted contract entries and structure them in clean markdown format."
-                "Use tables where appropriate. Be clear, direct, and structured."
+                "You are a formatter assistant.\n"
+                "Take the extracted rows and format them cleanly using bullet points.\n"
+                "For each one, use a subheading like `## Result <number>` and then format the content using bullet points:\n"
+                "- **Field**: Value\n"
+                "Keep it structured and readable. Do not summarize or modify values."
             )),
             HumanMessage(content=f"Query: {query}\n\nExtracted Entries:\n{extracted_content}")
         ]
 
 
 
-        structured_output = llm(formatting_messages).content.strip()
 
-        result = {
+    structured_output = llm(formatting_messages).content.strip()
+
+    result = {
             "query": query,
             "gpt_response": structured_output,
             "retrieved_context": retrieved_context,
             "sources": deduped_sources
         }
 
-        set_cached_result(query, result)
-        return {"cached": False, **result}
+    set_cached_result(query, result)
+    return {"cached": False, **result}
 
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Semantic Search LLM failed: {str(e)}")
+    # except Exception as e:
+    #     raise HTTPException(status_code=500, detail=f"Semantic Search LLM failed: {str(e)}")
 
 
 @router.get("/suggestions/")
