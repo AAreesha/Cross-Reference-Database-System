@@ -28,10 +28,28 @@ services:
     depends_on:
       - postgres
       - redis
+    env_file:
+      - .env   # ✅ Load from .env only (DON’T duplicate below)
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/unified_db
       REDIS_URL: redis://redis:6379
-      OPENAI_API_KEY: sk-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+      OPENAI_API_KEY: ${OPENAI_API_KEY}  # still OK to inject this
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: frontend_ui
+    ports:
+      - "5173:5173"  # Vite dev server port
+    depends_on:
+      - backend
+    environment:
+      VITE_API_BASE_URL: http://localhost:8000
+    command: npm run dev
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    working_dir: /app
+
 
   adminer:
     image: adminer

@@ -1,7 +1,9 @@
 // src/api.js
 import axios from 'axios';
 
-const API_BASE_URL = 'http://localhost:8000'; // Update to your backend URL if hosted
+// const API_BASE_URL = 'http://localhost:8000'; // Update to your backend URL if hosted
+const API_BASE_URL = '/api';
+
 
 /**
  * Insert a record into the unified index.
