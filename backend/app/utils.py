@@ -5,10 +5,16 @@ from langchain.chat_models import ChatOpenAI
 from crewai.tools import BaseTool
 from db import SessionLocal
 from models import UnifiedIndex
+from dotenv import load_dotenv
 from sqlalchemy import cast, text
 from pgvector.sqlalchemy import Vector
+from dotenv import load_dotenv
 
-client = OpenAI()  # Uses OPENAI_API_KEY from .env
+load_dotenv()
+
+def get_openai_client():
+    return OpenAI()
+# client = OpenAI()  # Uses OPENAI_API_KEY from .env
 MAX_CHARS = 10000  # Safe truncation limit
 
 def chunk_text(text: str, max_tokens=800):
@@ -48,6 +54,7 @@ def generate_embedding(text: str) -> list:
     if not isinstance(text, str):
         raise ValueError("Embedding input must be a string")
 
+    client = get_openai_client()
     chunks = chunk_text(text, max_tokens=800)
     embeddings = []
 

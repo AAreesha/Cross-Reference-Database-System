@@ -261,7 +261,7 @@ def semantic_search(query: str, db: Session = Depends(get_db)):
         #     HumanMessage(content=f"Query: {query}\n\nExtracted Entries:\n{extracted_content}")
         # ]
 
-        #Bullets
+    #Bullets
     formatting_messages = [
             SystemMessage(content=(
                 "You are a formatter assistant.\n"
