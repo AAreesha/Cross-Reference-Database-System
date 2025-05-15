@@ -143,7 +143,7 @@ def hybrid_score_sort(dense_results, sparse_results, boost=0.4):
             combined[key]["score"] += boost * r.score
         else:
             combined[key] = {"dense": r, "score": boost * r.score}
-    return sorted([v["dense"] for v in combined.values()], key=lambda x: -v["score"])
+    return [item["dense"] for item in sorted(combined.values(), key=lambda item: -item["score"])]
 
 
 def keyword_boost_query(query: str) -> str:
