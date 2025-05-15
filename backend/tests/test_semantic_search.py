@@ -1,61 +1,46 @@
-import pytest
-import io
 import sys
 import os
-from unittest.mock import patch
-from fastapi.testclient import TestClient
+from unittest.mock import patch, MagicMock
+import pytest
 
-
-# 👇 Match your working pattern
+# ✅ Patch sys.path to locate `app` folder for module imports
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../app")))
 
+from fastapi.testclient import TestClient
 from main import app
 
 client = TestClient(app)
 
+@patch("routes.generate_embedding", return_value=[0.1] * 1536)
+@patch("routes.ChatOpenAI")
+@patch("routes.get_cached_result", return_value=None)
+@patch("routes.set_cached_result", return_value=None)
+@patch("routes.SessionLocal")
+def test_semantic_search_valid(mock_db, mock_cache_set, mock_cache_get, mock_llm, mock_embed):
+    dummy_record = MagicMock()
+    dummy_record.id = 1
+    dummy_record.source_tag = "db1"
+    dummy_record.source_text = "Relevant contract for AI"
 
-# ✅ Test: Valid file ingest with mocked embedding & processing
-@patch("app.routes.generate_embedding", return_value=[0.1] * 1536)
-@patch("app.routes.process_upload_file", return_value=None)
-def test_ingest_file(mock_process, mock_embed):
-    dummy_csv = "name,email\nAlice,alice@example.com\nBob,bob@example.com"
-    files = {
-        "file": ("dummy.csv", io.BytesIO(dummy_csv.encode("utf-8")), "text/csv")
-    }
-    data = {"source_tag": "db1"}
+    mock_session = MagicMock()
+    mock_session.query().filter().order_by().limit().all.return_value = [dummy_record]
+    mock_db.return_value = mock_session
 
-    response = client.post("/files/ingest", files=files, data=data)
+    mock_llm.return_value.return_value.content.strip.return_value = "## Result 1\n- **Field**: Value"
+
+    response = client.post("/semantic-search/", params={"query": "AI contract"})
     assert response.status_code == 200
     json_data = response.json()
-    assert "upload_id" in json_data
-    assert json_data["status"] == "file upload pending"
+    assert json_data["cached"] is False
+    assert json_data["query"] == "AI contract"
+    assert "gpt_response" in json_data
+    assert "retrieved_context" in json_data
+    assert "sources" in json_data
 
-    # Check status endpoint
-    upload_id = json_data["upload_id"]
-    status_resp = client.get(f"/files/status/{upload_id}")
-    assert status_resp.status_code == 200
-    assert "status" in status_resp.json()
 
-# ✅ Test: Upload fails for non-CSV/Excel
-def test_invalid_file_type():
-    dummy_txt = "Just some text content"
-    files = {
-        "file": ("file.txt", io.BytesIO(dummy_txt.encode("utf-8")), "text/plain")
-    }
-    data = {"source_tag": "db1"}
-
-    response = client.post("/files/ingest", files=files, data=data)
-    assert response.status_code == 400
-    assert "Only CSV or Excel" in response.text
-
-# ✅ Test: Upload fails for bad source_tag
-def test_invalid_source_tag():
-    dummy_csv = "name,email\nCharlie,charlie@example.com"
-    files = {
-        "file": ("dummy.csv", io.BytesIO(dummy_csv.encode("utf-8")), "text/csv")
-    }
-    data = {"source_tag": "invalid_db"}
-
-    response = client.post("/files/ingest", files=files, data=data)
-    assert response.status_code == 400
-    assert "Invalid source_tag" in response.text
+@patch("routes.redis_client.smembers", return_value={"cache1", "cache2"})
+def test_get_cached_queries(mock_redis):
+    response = client.get("/suggestions/")
+    assert response.status_code == 200
+    json_data = response.json()
+    assert json_data["suggestions"] == ["cache1", "cache2"]

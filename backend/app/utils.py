@@ -14,6 +14,7 @@ load_dotenv()
 
 def get_openai_client():
     return OpenAI()
+
 # client = OpenAI()  # Uses OPENAI_API_KEY from .env
 MAX_CHARS = 10000  # Safe truncation limit
 
