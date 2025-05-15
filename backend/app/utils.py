@@ -6,7 +6,8 @@ from crewai.tools import BaseTool
 from db import SessionLocal
 from models import UnifiedIndex
 from dotenv import load_dotenv
-from sqlalchemy import cast, text
+from sqlalchemy import cast, text, func
+from sqlalchemy import desc
 from pgvector.sqlalchemy import Vector
 from dotenv import load_dotenv
 
@@ -133,3 +134,18 @@ def run_dual_agent_rag(query: str, retrieved_context: str):
         return "⚠️ Retrieval agent returned no useful output."
 
     return result.output
+
+def hybrid_score_sort(dense_results, sparse_results, boost=0.4):
+    combined = {f"{r.id}_{r.source_tag}": {"dense": r, "score": 1.0} for r in dense_results}
+    for r in sparse_results:
+        key = f"{r.id}_{r.source_tag}"
+        if key in combined:
+            combined[key]["score"] += boost * r.score
+        else:
+            combined[key] = {"dense": r, "score": boost * r.score}
+    return sorted([v["dense"] for v in combined.values()], key=lambda x: -v["score"])
+
+
+def keyword_boost_query(query: str) -> str:
+    tokens = [t.strip() for t in query.lower().split() if len(t.strip()) > 1]
+    return " & ".join([f"{token}:*" for token in tokens])

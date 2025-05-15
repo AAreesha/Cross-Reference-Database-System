@@ -6,12 +6,13 @@ from sqlalchemy import func, desc
 from cache import get_cached_result, set_cached_result
 import pandas as pd
 import io
+from collections import namedtuple
 from uuid import uuid4
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func, desc
+from sqlalchemy import func, desc,text
 from db import SessionLocal
 from models import UnifiedIndex
-from utils import generate_embedding, as_pgvector
+from utils import generate_embedding, as_pgvector, keyword_boost_query, hybrid_score_sort
 import uuid
 from fastapi import BackgroundTasks
 from fastapi.responses import JSONResponse
@@ -263,15 +264,25 @@ def semantic_search(query: str, db: Session = Depends(get_db)):
 
     #Bullets
     formatting_messages = [
-            SystemMessage(content=(
-                "You are a formatter assistant.\n"
-                "Take the extracted rows and format them cleanly using bullet points.\n"
-                "For each one, use a subheading like `## Result <number>` and then format the content using bullet points:\n"
-                "- **Field**: Value\n"
-                "Keep it structured and readable. Do not summarize or modify values."
-            )),
-            HumanMessage(content=f"Query: {query}\n\nExtracted Entries:\n{extracted_content}")
-        ]
+        SystemMessage(content=(
+            "You are a formatting assistant whose sole job is to transform raw extracted entries "
+            "into a strict Markdown structure. Do not add commentary, omit nothing, and do not "
+            "summarize or alter values.\n\n"
+            "Requirements:\n"
+            "1. For each extracted entry, create a top‑level heading `## Result <n>` (n starts at 1).\n"
+            "2. Under each heading, list every field as a bullet point in the form:\n"
+            "   - **<Field Name>**: <Exact Value>\n"
+            "3. Preserve exact text and punctuation of values—no paraphrasing.\n"
+            "4. Do not include any sections or text beyond what’s explicitly in the extracted entries.\n"
+            "5. Ensure the output is valid Markdown."
+        )),
+        HumanMessage(content=(
+            f"Query:\n```\n{query}\n```\n\n"
+            "Extracted Entries (each entry separated by a blank line):\n```\n"
+            f"{extracted_content}\n```\n\n"
+            "Now format exactly as instructed above."
+        ))
+    ]
 
 
 
@@ -296,3 +307,6 @@ def semantic_search(query: str, db: Session = Depends(get_db)):
 def get_cached_queries():
     suggestions = list(redis_client.smembers("cached_queries"))
     return {"suggestions": sorted(suggestions, key=str.lower)}
+    
+
+
