@@ -49,8 +49,10 @@ const SearchBar = ({ onSearch }) => {
   const handleSuggestionClick = (suggestion) => {
     setQuery(suggestion);
     setShowSuggestions(false);
-    handleGo();
+    // Directly trigger the search with the full suggestion:
+    onSearch(suggestion);
   };
+
 
   return (
     <div className="relative w-full flex flex-col items-center px-4 sm:px-0">
