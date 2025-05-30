@@ -12,3 +12,5 @@
 3.Point Postgres service at a database/db-init.sql file so it runs on container start.
 (idek what this means)
 
+ssh root@64.226.118.82
+t?ZqxxY%k8::c0kbGy
