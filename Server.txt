@@ -1,0 +1,45 @@
+✅ 1. Test Backend (FastAPI)
+
+Visit:
+
+http://64.226.118.82:8000/docs
+
+This is the Swagger UI. Test endpoints like:
+
+/insert-record/
+
+/semantic-search/
+
+Make sure .env contains your valid OPENAI_API_KEY or those endpoints will fail with OpenAI-related errors.
+
+
+✅ 2. Test Frontend (React)
+Visit:
+
+http://64.226.118.82:5173
+
+This will show your React app. If it's blank or fails to connect to the API:
+
+Make sure VITE_API_BASE_URL=http://localhost:8000 is correctly set
+
+You may need to rebuild the frontend with the correct API URL
+
+
+✅ 3. Access Adminer (PostgreSQL GUI)
+Visit:
+
+http://64.226.118.82:8080
+
+Login with:
+
+System: PostgreSQL
+
+Server: postgres
+
+Username: postgre
+
+Password: areesha
+
+Database: unified_db
+
+This lets you inspect the unified_index table.

@@ -4,7 +4,7 @@
     c. backend => FastAPI on port 8000
     d. frontend => React on port 3000
 
-2. Wire env
+2. Write env
     a. Database URL
     b. REDIS URL
     c. OPEN API KEY

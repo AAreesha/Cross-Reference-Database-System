@@ -1,19 +1,25 @@
-fastapi
-uvicorn
+fastapi==0.104.1
+uvicorn==0.24.0
 openai
 redis
-sqlalchemy
-psycopg2-binary
-pgvector
-pandas
-openpyxl
+sqlalchemy==2.0.25
+psycopg2-binary==2.9.9
+pgvector==0.2.4
+pandas==2.1.4
+openpyxl==3.1.2
 xlrd
 redis
-python-multipart
+python-multipart==0.0.6
 tiktoken>=0.5.1
-langchain>=0.1.0
+langchain==0.0.352
 langchain-community>=0.0.18
 langchain-openai>=0.0.6
-python-dotenv>=1.0.0
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+python-dotenv==1.0.0
+requests==2.31.0
+numpy==1.24.3
+scikit-learn==1.3.2
+httpx==0.26.0
 
 

@@ -1,7 +1,74 @@
-.env
-test-queries.txt
-backend\venv
-frontend\node_modules
-backend\.env
-backend\venv
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+*.pkl
+*.log
+
+# Virtual environments
 venv/
+env/
+ENV/
+.venv/
+.pytest_cache/
+.mypy_cache/
+
+# Python environments and tools
+*.egg-info/
+.eggs/
+build/
+dist/
+*.manifest
+*.spec
+pip-wheel-metadata/
+.coverage
+htmlcov/
+.tox/
+.pyre/
+.pytype/
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+# ---- Node.js ----
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+package-lock.json
+yarn.lock
+.pnpm-debug.log
+
+# Build output
+/build
+/dist
+/.next
+.next/
+out/
+.temp
+.serve
+
+# Environment and Secrets
+.env
+.env.*   # Covers .env.development, .env.production etc.
+.env.local
+.envrc
+
+# IDEs and OS-specific
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Optional logs
+*.log
+
+# ---- Others ----
+*.sqlite3
+*.db
+*.sqlite
+*.bak
+*.tmp

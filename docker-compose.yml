@@ -1,4 +1,3 @@
-
 services:
   postgres:
     image: ankane/pgvector
@@ -28,11 +27,13 @@ services:
     depends_on:
       - postgres
       - redis
-    env_file:
-      - .env   # ✅ Load from .env only (DON’T duplicate below)
     environment:
       REDIS_URL: redis://redis:6379
-      OPENAI_API_KEY: ${OPENAI_API_KEY}  # still OK to inject this
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: unified_db
+      POSTGRES_USER: postgre
+      POSTGRES_PASSWORD: areesha
+      DEBUG: "true"
 
   frontend:
     build:
@@ -43,13 +44,12 @@ services:
     depends_on:
       - backend
     environment:
-      VITE_API_BASE_URL: http://localhost:8000
+      VITE_API_BASE_URL: http://backend_api:8000
     command: npm run dev
     volumes:
       - ./frontend:/app
       - /app/node_modules
     working_dir: /app
-
 
   adminer:
     image: adminer
